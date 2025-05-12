@@ -1,0 +1,46 @@
+http:
+  services:
+    service1:
+      loadBalancer:
+        servers:
+          - url: "http://whoami/"
+  routers:
+    router1:
+      rule: "Host(`whoami.localhost.direct`)"
+      service: service1
+      tls:
+        options: clientca
+      middlewares:
+        - tlsguard
+
+  middlewares:
+    tlsguard:
+      plugin:
+        tlsguard:
+          usernameHeader: "User"
+          users:
+            alice: alice
+            alice1: alice
+            bob1: bob
+            charlie@example.org: charlie
+          requestHeaders:
+            X-Cert-Mail: "[[.Cert.Subject.CommonName]]@domain.tld"
+          refreshInterval: 30m
+          rules:
+          - type: ipRange
+            addInterface: false
+            ranges:
+            - "192.168.0.0/24"
+            - "10.89.0.0/24"
+
+tls:
+  certificates:
+    - certFile: /config/certs/localhost.direct.crt
+      keyFile: /config/certs/localhost.direct.key
+
+  options:
+    clientca:
+      clientAuth:
+        caFiles:
+          - /config/certs/ca.pem
+        clientAuthType: VerifyClientCertIfGiven

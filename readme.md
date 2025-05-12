@@ -1,270 +1,435 @@
-This repository includes an example plugin, `demo`, for you to use as a reference for developing your own plugins.
+# TLSGuard - Comprehensive Authentication Plugin for Traefik v3
 
-[![Build Status](https://github.com/traefik/plugindemo/workflows/Main/badge.svg?branch=master)](https://github.com/traefik/plugindemo/actions)
+TLSGuard is a powerful authentication plugin for Traefik that combines certificate-based user authentication with IP whitelisting and rule-based access control, providing flexible and robust security for your services.
 
-The existing plugins can be browsed into the [Plugin Catalog](https://plugins.traefik.io).
+## Features
 
-# Developing a Traefik plugin
+- **Certificate-based User Authentication**: Authenticate users based on the Common Name, DNS Names, and Email Addresses of their TLS client certificates
+- **IP Whitelisting**: Allow access based on client IP address ranges when no valid certificate is provided
+- **Rule-based Access Control**: Combine rules with logical operators (AllOf, AnyOf, NoneOf)
+- **Header-based Authentication**: Define rules to match specific HTTP headers
+- **External Data Sources**: Load configuration from external APIs or files
+- **Automatic Network Detection**: Automatically include local network ranges
+- **Custom Request Headers**: Add custom headers to requests based on certificate information
+- **Periodic Configuration Refresh**: Update rules from external sources at configurable intervals
 
-[Traefik](https://traefik.io) plugins are developed using the [Go language](https://golang.org).
+## Installation
 
-A [Traefik](https://traefik.io) middleware plugin is just a [Go package](https://golang.org/ref/spec#Packages) that provides an `http.Handler` to perform specific processing of requests and responses.
+### Using Traefik Pilot (Plugin Catalog)
 
-Rather than being pre-compiled and linked, however, plugins are executed on the fly by [Yaegi](https://github.com/traefik/yaegi), an embedded Go interpreter.
-
-## Usage
-
-For a plugin to be active for a given Traefik instance, it must be declared in the static configuration.
-
-Plugins are parsed and loaded exclusively during startup, which allows Traefik to check the integrity of the code and catch errors early on.
-If an error occurs during loading, the plugin is disabled.
-
-For security reasons, it is not possible to start a new plugin or modify an existing one while Traefik is running.
-
-Once loaded, middleware plugins behave exactly like statically compiled middlewares.
-Their instantiation and behavior are driven by the dynamic configuration.
-
-Plugin dependencies must be [vendored](https://golang.org/ref/mod#vendoring) for each plugin.
-Vendored packages should be included in the plugin's GitHub repository. ([Go modules](https://blog.golang.org/using-go-modules) are not supported.)
-
-### Configuration
-
-For each plugin, the Traefik static configuration must define the module name (as is usual for Go packages).
-
-The following declaration (given here in YAML) defines a plugin:
+1. Enable the Traefik Pilot feature in your Traefik configuration
+2. Add the plugin to your Traefik static configuration:
 
 ```yaml
-# Static configuration
-
+# traefik.yml
 experimental:
   plugins:
-    example:
-      moduleName: github.com/traefik/plugindemo
-      version: v0.2.1
+    tlsguard:
+      moduleName: github.com/hhftechnology/tlsguard
+      version: v1.0.0
 ```
 
-Here is an example of a file provider dynamic configuration (given here in YAML), where the interesting part is the `http.middlewares` section:
+### Local Development
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/hhftechnology/tlsguard.git
+   ```
+
+2. Use local plugin in Traefik configuration:
+   ```yaml
+   # traefik.yml
+   experimental:
+     localPlugins:
+       tlsguard:
+         moduleName: github.com/hhftechnology/tlsguard
+   ```
+
+## Configuration
+
+TLSGuard provides a flexible configuration model that can be tailored to your specific security requirements.
+
+### User Authentication
+
+The plugin can authenticate users based on certificate attributes and add the username as a request header.
 
 ```yaml
-# Dynamic configuration
+# User authentication based on certificates
+usernameHeader: "User"  # Header to add with username
+users:  
+  alice: alice        # Common Name "alice" maps to username "alice"
+  bob1: bob           # Common Name "bob1" maps to username "bob"
+  charlie@example.org: charlie  # Email "charlie@example.org" maps to username "charlie"
+```
 
+The authentication flow checks these certificate fields in order:
+1. Subject Common Name
+2. Subject Alternative Names (DNS Names)
+3. Subject Alternative Names (Email Addresses)
+
+### Rule Types
+
+If no valid certificate is presented (or if you want additional restrictions even with certificates), the plugin supports the following rule types:
+
+#### AllOf
+
+This rule matches if all sub-rules match (logical AND):
+
+```yaml
+rules:
+  - type: allOf
+    rules:
+      - type: ipRange
+        ranges: ["192.168.1.0/24"]
+      - type: header
+        headers:
+          User-Agent: ".*Firefox.*"
+```
+
+#### AnyOf
+
+This rule matches if any sub-rule matches (logical OR):
+
+```yaml
+rules:
+  - type: anyOf
+    rules:
+      - type: ipRange
+        ranges: ["192.168.1.0/24"]
+      - type: header
+        headers:
+          User-Agent: ".*Firefox.*"
+```
+
+#### NoneOf
+
+This rule matches if no sub-rule matches (logical NOT):
+
+```yaml
+rules:
+  - type: noneOf
+    rules:
+      - type: ipRange
+        ranges: ["192.168.1.0/24"]
+      - type: header
+        headers:
+          User-Agent: ".*Firefox.*"
+```
+
+#### IPRange
+
+This rule matches if the client IP is in any of the specified ranges:
+
+```yaml
+rules:
+  - type: ipRange
+    ranges:
+      - 192.168.1.0/24
+      - 10.0.0.0/8
+    addInterface: true  # Add local network ranges
+```
+
+The `addInterface` option automatically adds the IP ranges of the network interfaces with the default route on the system. This is useful when running in containers or on systems with dynamic IP assignments.
+
+#### Header
+
+This rule matches if request headers match the specified patterns (using regular expressions):
+
+```yaml
+rules:
+  - type: header
+    headers:
+      User-Agent: ".*Chrome.*"
+      Accept-Language: "en-US,en;q=0.5"
+```
+
+All specified headers must match their patterns for the rule to match.
+
+### External Data
+
+TLSGuard supports loading configuration from external sources, which is particularly useful for dynamic environments:
+
+```yaml
+externalData:
+  url: https://api.example.com/config
+  dataKey: data  # Key in the JSON response containing the relevant data
+  skipTlsVerify: false  # Set to true to skip TLS certificate verification
+  headers:
+    Authorization: "Bearer [[ file \"/path/to/token\" ]]"
+    Content-Type: "application/json"
+```
+
+The external data is fetched when the plugin is initialized and can be used in rule templates.
+
+### Template Functions
+
+TLSGuard supports the following template functions in configuration values:
+
+- `[[ file "/path/to/file" ]]`: Replace with the contents of the specified file
+- `[[ env "ENVIRONMENT_VARIABLE" ]]`: Replace with the value of the specified environment variable
+- `[[ .data.someField ]]`: Replace with a field from the external data source
+
+Templates are enclosed in `[[` and `]]` delimiters.
+
+### Custom Request Headers
+
+Add custom headers to requests based on certificate information:
+
+```yaml
+requestHeaders:
+  X-Cert-Mail: "[[.Cert.Subject.CommonName]]@example.com"
+  X-Cert-Issuer: "[[.Cert.Issuer.CommonName]]"
+  X-User-Context: "role=admin,org=[[.Cert.Subject.Organization]]"
+```
+
+The following variables are available in the templates:
+- `Cert`: The client certificate (when available)
+- `Req`: The HTTP request
+
+### Automatic Configuration Refresh
+
+TLSGuard can periodically refresh its configuration from external sources:
+
+```yaml
+refreshInterval: 30m  # Valid time units: s, m, h
+```
+
+This is especially useful for dynamic environments where IP whitelists or other rules change frequently.
+
+## Complete Example
+
+Here's a complete example for Traefik dynamic configuration:
+
+```yaml
 http:
-  routers:
-    my-router:
-      rule: host(`demo.localhost`)
-      service: service-foo
-      entryPoints:
-        - web
-      middlewares:
-        - my-plugin
-
-  services:
-   service-foo:
-      loadBalancer:
-        servers:
-          - url: http://127.0.0.1:5000
-  
   middlewares:
-    my-plugin:
+    tlsguard:
       plugin:
-        example:
-          headers:
-            Foo: Bar
-```
+        tlsguard:
+          # User authentication
+          usernameHeader: "User"
+          users:
+            alice: alice
+            alice1: alice  # Multiple certificates for the same user
+            bob1: bob
+            charlie@example.org: charlie
+          
+          # Custom headers
+          requestHeaders:
+            X-Cert-Mail: "[[.Cert.Subject.CommonName]]@example.com"
+            X-Cert-Organization: "[[.Cert.Subject.Organization]]"
+          
+          # Configuration refresh
+          refreshInterval: 30m
+          
+          # External data source
+          externalData:
+            url: https://config-api.example.com/whitelist
+            dataKey: data
+            skipTlsVerify: false
+            headers:
+              Authorization: "Bearer [[ file \"/secrets/api-token\" ]]"
+              Content-Type: "application/json"
+          
+          # Rule-based access control
+          rules:
+            - type: anyOf
+              rules:
+                # Allow specific IP ranges
+                - type: ipRange
+                  ranges:
+                    - 192.168.0.0/16
+                    - 10.0.0.0/8
+                    - "[[ .data.ipRanges ]]"  # From external data
+                  addInterface: true
+                
+                # Allow specific user agents
+                - type: header
+                  headers:
+                    User-Agent: ".*Firefox.*"
+                    X-Api-Key: "[[ .data.apiKey ]]"  # From external data
 
-### Local Mode
-
-Traefik also offers a developer mode that can be used for temporary testing of plugins not hosted on GitHub.
-To use a plugin in local mode, the Traefik static configuration must define the module name (as is usual for Go packages) and a path to a [Go workspace](https://golang.org/doc/gopath_code.html#Workspaces), which can be the local GOPATH or any directory.
-
-The plugins must be placed in `./plugins-local` directory,
-which should be in the working directory of the process running the Traefik binary.
-The source code of the plugin should be organized as follows:
-
-```
-./plugins-local/
-    └── src
-        └── github.com
-            └── traefik
-                └── plugindemo
-                    ├── demo.go
-                    ├── demo_test.go
-                    ├── go.mod
-                    ├── LICENSE
-                    ├── Makefile
-                    └── readme.md
-```
-
-```yaml
-# Static configuration
-
-experimental:
-  localPlugins:
-    example:
-      moduleName: github.com/traefik/plugindemo
-```
-
-(In the above example, the `plugindemo` plugin will be loaded from the path `./plugins-local/src/github.com/traefik/plugindemo`.)
-
-```yaml
-# Dynamic configuration
-
-http:
   routers:
-    my-router:
-      rule: host(`demo.localhost`)
-      service: service-foo
-      entryPoints:
-        - web
+    secure:
+      rule: "Host(`secure.example.com`)"
+      service: my-service
+      tls:
+        options: clientauth
       middlewares:
-        - my-plugin
+        - tlsguard
 
-  services:
-   service-foo:
-      loadBalancer:
-        servers:
-          - url: http://127.0.0.1:5000
-  
-  middlewares:
-    my-plugin:
-      plugin:
-        example:
-          headers:
-            Foo: Bar
+tls:
+  options:
+    clientauth:
+      clientAuth:
+        caFiles:
+          - /path/to/ca.crt
+        clientAuthType: VerifyClientCertIfGiven  # Important: allows both cert and non-cert access
 ```
 
-## Defining a Plugin
+## Setup with Client Certificates
 
-A plugin package must define the following exported Go objects:
+### Creating a Certificate Authority
 
-- A type `type Config struct { ... }`. The struct fields are arbitrary.
-- A function `func CreateConfig() *Config`.
-- A function `func New(ctx context.Context, next http.Handler, config *Config, name string) (http.Handler, error)`.
+1. Create a Certificate Authority (CA):
+   ```bash
+   openssl req -x509 -newkey rsa:4096 -keyout ca.key -out ca.crt -days 365 -nodes -subj "/CN=My Custom CA"
+   ```
 
-```go
-// Package example a example plugin.
-package example
+2. Create a client certificate signed by the CA:
+   ```bash
+   # Create a private key
+   openssl genrsa -out client.key 4096
+   
+   # Create a Certificate Signing Request (CSR)
+   openssl req -new -key client.key -out client.csr -subj "/CN=alice"
+   
+   # Sign the CSR with the CA
+   openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out client.crt -days 365
+   
+   # Create a combined PEM file for clients
+   cat client.crt client.key > client.pem
+   ```
 
-import (
-	"context"
-	"net/http"
-)
+3. Configure Traefik to require client certificates:
+   ```yaml
+   tls:
+     options:
+       clientauth:
+         clientAuth:
+           caFiles:
+             - /path/to/ca.crt
+           clientAuthType: VerifyClientCertIfGiven  # Allows fallback to IP whitelist
+   ```
 
-// Config the plugin configuration.
-type Config struct {
-	// ...
-}
+4. Use the client certificate in requests:
+   ```bash
+   curl --cert client.pem https://secure.example.com
+   ```
 
-// CreateConfig creates the default plugin configuration.
-func CreateConfig() *Config {
-	return &Config{
-		// ...
-	}
-}
+## Security Considerations
 
-// Example a plugin.
-type Example struct {
-	next     http.Handler
-	name     string
-	// ...
-}
+### Client Certificate Verification
 
-// New created a new plugin.
-func New(ctx context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
-	// ...
-	return &Example{
-		// ...
-	}, nil
-}
+When using the `VerifyClientCertIfGiven` option, be aware that:
+- Clients with valid certificates will be authenticated based on the certificate
+- Clients without certificates will fall back to IP whitelisting rules
+- Invalid certificates will be rejected
 
-func (e *Example) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	// ...
-	e.next.ServeHTTP(rw, req)
-}
-```
+For stricter security, consider using `RequireAndVerifyClientCert` in Traefik's TLS options, but note that this will require valid certificates from all clients and disable IP whitelisting.
 
-## Logs
+### IP Spoofing Protection
 
-Currently, the only way to send logs to Traefik is to use `os.Stdout.WriteString("...")` or `os.Stderr.WriteString("...")`.
+When using IP whitelisting, be aware of potential IP spoofing attacks. TLSGuard checks the following headers in order to determine the client's IP address:
+1. `X-Real-Ip` header
+2. `X-Forwarded-For` header
 
-In the future, we will try to provide something better and based on levels.
+Ensure your reverse proxy or load balancer correctly sets these headers and that they cannot be spoofed by clients.
 
-## Plugins Catalog
+### Regular Expression Security
 
-Traefik plugins are stored and hosted as public GitHub repositories.
+When using regular expressions in header rules, be careful of potential regex denial-of-service (ReDoS) attacks. Avoid overly complex patterns with excessive backtracking.
 
-Every 30 minutes, the Plugins Catalog online service polls Github to find plugins and add them to its catalog.
+## Headers Added by TLSGuard
+
+TLSGuard adds the following headers to requests:
+
+- `X-TLSGuard-Cert-SN`: Serial number of the client certificate (or "NoCert" if none)
+- `X-TLSGuard-Cert-CN`: Common Name of the client certificate
+- `X-TLSGuard-Cidr`: CIDR range that matched the client IP (when applicable)
+- `X-TLSGuard-Header`: Set to "true" when a header rule matches
+- Custom headers configured in `requestHeaders`
+- Username header (if configured in `usernameHeader`)
+
+## Development and Testing
 
 ### Prerequisites
 
-To be recognized by Plugins Catalog, your repository must meet the following criteria:
+- Go 1.19 or higher
+- Golangci-lint
+- Yaegi (for Traefik plugin testing)
 
-- The `traefik-plugin` topic must be set.
-- The `.traefik.yml` manifest must exist, and be filled with valid contents.
+### Running Tests
 
-If your repository fails to meet either of these prerequisites, Plugins Catalog will not see it.
-
-### Manifest
-
-A manifest is also mandatory, and it should be named `.traefik.yml` and stored at the root of your project.
-
-This YAML file provides Plugins Catalog with information about your plugin, such as a description, a full name, and so on.
-
-Here is an example of a typical `.traefik.yml`file:
-
-```yaml
-# The name of your plugin as displayed in the Plugins Catalog web UI.
-displayName: Name of your plugin
-
-# For now, `middleware` is the only type available.
-type: middleware
-
-# The import path of your plugin.
-import: github.com/username/my-plugin
-
-# A brief description of what your plugin is doing.
-summary: Description of what my plugin is doing
-
-# Medias associated to the plugin (optional)
-iconPath: foo/icon.png
-bannerPath: foo/banner.png
-
-# Configuration data for your plugin.
-# This is mandatory,
-# and Plugins Catalog will try to execute the plugin with the data you provide as part of its startup validity tests.
-testData:
-  Headers:
-    Foo: Bar
+```bash
+go test -v -cover ./...
 ```
 
-Properties include:
+### Testing with Yaegi
 
-- `displayName` (required): The name of your plugin as displayed in the Plugins Catalog web UI.
-- `type` (required): For now, `middleware` is the only type available.
-- `import` (required): The import path of your plugin.
-- `summary` (required): A brief description of what your plugin is doing.
-- `testData` (required): Configuration data for your plugin. This is mandatory, and Plugins Catalog will try to execute the plugin with the data you provide as part of its startup validity tests.
-- `iconPath` (optional): A local path in the repository to the icon of the project.
-- `bannerPath` (optional): A local path in the repository to the image that will be used when you will share your plugin page in social medias.
+```bash
+yaegi test -v .
+```
 
-There should also be a `go.mod` file at the root of your project. Plugins Catalog will use this file to validate the name of the project.
+### Local Testing with Docker Compose
 
-### Tags and Dependencies
+The repository includes a Docker Compose setup for local testing:
 
-Plugins Catalog gets your sources from a Go module proxy, so your plugins need to be versioned with a git tag.
+1. Generate test certificates:
+   ```bash
+   cd tests/certs
+   make
+   ```
 
-Last but not least, if your plugin middleware has Go package dependencies, you need to vendor them and add them to your GitHub repository.
+2. Start the test environment:
+   ```bash
+   cd tests
+   docker-compose up -d
+   ```
 
-If something goes wrong with the integration of your plugin, Plugins Catalog will create an issue inside your Github repository and will stop trying to add your repo until you close the issue.
+3. Test access with and without certificates:
+   ```bash
+   # With certificate
+   curl -k --cert certs/alice-client.pem --key certs/alice-client-key.pem https://whoami.localhost.direct:8140
+   
+   # Without certificate (IP whitelist)
+   curl -k https://whoami.localhost.direct:8140
+   ```
 
 ## Troubleshooting
 
-If Plugins Catalog fails to recognize your plugin, you will need to make one or more changes to your GitHub repository.
+### Common Issues
 
-In order for your plugin to be successfully imported by Plugins Catalog, consult this checklist:
+1. **Certificate not recognized**:
+   - Ensure the CA certificate is correctly configured in Traefik
+   - Check that the certificate's Common Name or Subject Alternative Names match entries in the `users` configuration
+   - Verify the certificate is valid and not expired
 
-- The `traefik-plugin` topic must be set on your repository.
-- There must be a `.traefik.yml` file at the root of your project describing your plugin, and it must have a valid `testData` property for testing purposes.
-- There must be a valid `go.mod` file at the root of your project.
-- Your plugin must be versioned with a git tag.
-- If you have package dependencies, they must be vendored and added to your GitHub repository.
+2. **IP whitelist not working**:
+   - Check that the CIDR ranges are correctly formatted
+   - Ensure the client's IP is correctly detected (X-Real-Ip or X-Forwarded-For headers)
+   - Verify the `addInterface` option if relying on local network detection
+
+3. **External data not loading**:
+   - Check network connectivity to the external data source
+   - Verify authentication headers are correct
+   - Check that the response format matches expectations
+
+### Debugging
+
+Enable debug logging in Traefik to see detailed information about the authentication process:
+
+```yaml
+log:
+  level: DEBUG
+```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+
+## Contact
+
+HHF Technology - https://forum.hhf.technology
+
+Project Link: [https://github.com/hhftechnology/tlsguard](https://github.com/hhftechnology/tlsguard)
