@@ -1,6 +1,25 @@
-# TLSGuard - Comprehensive Authentication Plugin for Traefik v3
 
-TLSGuard is a powerful authentication plugin for Traefik that combines certificate-based user authentication with IP whitelisting and rule-based access control, providing flexible and robust security for your services.
+<div align="center" width="100%">
+    <h1> TLSGuard - Comprehensive Authentication Plugin for Traefik v3</h1>
+    <img width="auto" src=".assets/banner.png">
+    <a target="_blank" href="https://GitHub.com/hhftechnology/tlsguard/graphs/contributors/"><img src="https://img.shields.io/github/contributors/hhftechnology/tlsguard.svg" /></a><br>
+    <a target="_blank" href="https://GitHub.com/hhftechnology/tlsguard/commits/"><img src="https://img.shields.io/github/last-commit/hhftechnology/tlsguard.svg" /></a>
+    <a target="_blank" href="https://GitHub.com/hhftechnology/tlsguard/issues/"><img src="https://img.shields.io/github/issues/hhftechnology/tlsguard.svg" /></a>
+    <a target="_blank" href="https://github.com/hhftechnology/tlsguard/issues?q=is%3Aissue+is%3Aclosed"><img src="https://img.shields.io/github/issues-closed/hhftechnology/tlsguard.svg" /></a><br>
+        <a target="_blank" href="https://github.com/hhftechnology/tlsguard/stargazers"><img src="https://img.shields.io/github/stars/hhftechnology/tlsguard.svg?style=social&label=Star" /></a>
+    <a target="_blank" href="https://github.com/hhftechnology/tlsguard/network/members"><img src="https://img.shields.io/github/forks/hhftechnology/tlsguard.svg?style=social&label=Fork" /></a>
+    <a target="_blank" href="https://github.com/hhftechnology/tlsguard/watchers"><img src="https://img.shields.io/github/watchers/hhftechnology/tlsguard.svg?style=social&label=Watch" /></a><br>
+</div>
+
+<div align="center" width="100%">
+    <p>TLSGuard is a powerful authentication plugin for Traefik that combines certificate-based user authentication with IP whitelisting and rule-based access control, providing flexible and robust security for your services.</p>
+    <a target="_blank" href="https://github.com/hhftechnology/tlsguard"><img src="https://img.shields.io/badge/maintainer-hhftechnology-orange" /></a>
+</div>
+
+## 📝 Forums
+
+[See the forums for further discussion here](https://forum.hhf.technology/)
+
 
 ## Features
 
